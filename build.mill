@@ -1,0 +1,31 @@
+package build
+
+import mill._
+import mill.scalalib._
+
+val defaultScalaVersion = "2.13.17"
+
+object davinci extends SbtModule {
+  def scalaVersion: T[String] = defaultScalaVersion
+
+  def millSourcePath = os.Path(sys.env("MILL_WORKSPACE_ROOT"))
+
+  def scalacOptions = Seq("-language:reflectiveCalls", "-Ymacro-annotations", "-Ytasty-reader")
+
+  def mvnDeps = super.mvnDeps() ++ Seq(
+    mvn"org.chipsalliance::chisel:7.3.0"
+  )
+
+  def scalacPluginMvnDeps = super.scalacPluginMvnDeps() ++ Seq(
+    mvn"org.chipsalliance:::chisel-plugin:7.3.0"
+  )
+
+  object test extends SbtTests with TestModule.ScalaTest {
+    def mvnDeps = super.mvnDeps() ++ Seq(
+      mvn"org.scalatest::scalatest:3.2.19"
+    )
+    def scalacPluginMvnDeps = super.scalacPluginMvnDeps() ++ Seq(
+      mvn"org.chipsalliance:::chisel-plugin:7.3.0"
+    )
+  }
+}
