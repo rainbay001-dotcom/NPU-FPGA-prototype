@@ -129,15 +129,23 @@ class FP32Add extends Module {
   }
 
   // Normalize: find leading 1
-  val lz = PriorityEncoder(Reverse(sum))
-  val normShift = Mux(lz > rExp, rExp, lz)  // clamp to avoid underflow
+  // After alignment, implicit 1 is at bit 47 of the 48-bit aligned values.
+  // After addition, the 49-bit sum has the leading 1 at bit 48 (carry) or bit 47 (normal)
+  // or lower (cancellation during subtraction).
+  // PriorityEncoder(Reverse(sum)) counts from bit 48, so lz=0 means carry,
+  // lz=1 means leading 1 at bit 47 (already normalized), lz>1 means needs left shift.
+  val lzRaw = PriorityEncoder(Reverse(sum))
+  // Shift needed to place leading 1 at bit 47: (lzRaw - 1) for non-carry cases
+  val needNorm = lzRaw > 1.U
+  val normAmt  = lzRaw - 1.U
+  val normShift = Mux(needNorm, Mux(normAmt > rExp, rExp, normAmt), 0.U)
   val normSum = (sum << normShift)(47, 0)
-  val normExp = rExp - normShift + Mux(sum(48), 1.U, 0.U)
+  val normExp = rExp - normShift
 
   // Handle carry out from addition
   val finalMan = Mux(sum(48),
-    sum(47, 25),  // shift right, take top 23 bits
-    normSum(47, 25)
+    sum(47, 25),     // carry: implicit 1 at bit 48, mantissa = bits 47..25
+    normSum(46, 24)  // no carry: implicit 1 at bit 47, mantissa = bits 46..24
   )
   val finalExp = Mux(sum(48), rExp + 1.U, normExp)
 

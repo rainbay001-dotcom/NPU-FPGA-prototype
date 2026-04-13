@@ -148,10 +148,11 @@ class CubeCore(val p: NPUClusterParams) extends Module {
 
     is(sLoadA) {
       // Read M words from L0A (one row per cycle)
+      // SyncReadMem has 1-cycle latency: read issued at cycle N, data at cycle N+1
       val addr = cmdReg.l0a_addr + wordCount
       val readData = l0a.read(addr)
       when(wordCount > 0.U) {
-        aRow(wordCount - 1.U) := RegNext(readData)
+        aRow(wordCount - 1.U) := readData  // readData = mem[addr from previous cycle]
       }
       wordCount := wordCount + 1.U
       when(wordCount === M.U) {
@@ -166,7 +167,7 @@ class CubeCore(val p: NPUClusterParams) extends Module {
       val addr = cmdReg.l0b_addr + wordCount
       val readData = l0b.read(addr)
       when(wordCount > 0.U) {
-        bRow(wordCount - 1.U) := RegNext(readData)
+        bRow(wordCount - 1.U) := readData  // readData = mem[addr from previous cycle]
       }
       wordCount := wordCount + 1.U
       when(wordCount === K.U) {
