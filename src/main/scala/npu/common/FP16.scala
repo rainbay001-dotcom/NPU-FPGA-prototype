@@ -25,6 +25,172 @@ object FP16Utils {
     Cat(sign, exp(7, 0), man(22, 0))
 }
 
+// FP16 + FP16 → FP16 adder (combinational, single cycle)
+// Used for VECTOR core SIMD lanes
+class FP16Add extends Module {
+  val io = IO(new Bundle {
+    val a   = Input(UInt(16.W))
+    val b   = Input(UInt(16.W))
+    val out = Output(UInt(16.W))
+  })
+
+  val aSign = FP16Utils.fp16Sign(io.a)
+  val bSign = FP16Utils.fp16Sign(io.b)
+  val aExp  = FP16Utils.fp16Exp(io.a)
+  val bExp  = FP16Utils.fp16Exp(io.b)
+  val aMan  = FP16Utils.fp16Man(io.a)
+  val bMan  = FP16Utils.fp16Man(io.b)
+
+  val aIsZero = io.a(14, 0) === 0.U
+  val bIsZero = io.b(14, 0) === 0.U
+
+  // Implicit leading 1 for normalized numbers
+  val aFull = Cat(Mux(aExp =/= 0.U, 1.U(1.W), 0.U(1.W)), aMan)  // 11 bits
+  val bFull = Cat(Mux(bExp =/= 0.U, 1.U(1.W), 0.U(1.W)), bMan)  // 11 bits
+
+  // Align exponents — work in 24-bit space for guard bits
+  val expDiff  = (aExp.zext - bExp.zext).asSInt
+  val aAligned = Wire(UInt(24.W))
+  val bAligned = Wire(UInt(24.W))
+  val rExp     = Wire(UInt(5.W))
+
+  when(expDiff >= 0.S) {
+    aAligned := aFull ## 0.U(13.W)
+    bAligned := (bFull ## 0.U(13.W)) >> expDiff.asUInt
+    rExp     := aExp
+  }.otherwise {
+    aAligned := (aFull ## 0.U(13.W)) >> ((-expDiff).asUInt)
+    bAligned := bFull ## 0.U(13.W)
+    rExp     := bExp
+  }
+
+  // Add or subtract based on signs
+  val sameSign = aSign === bSign
+  val sum = Wire(UInt(25.W))
+  val rSign = Wire(Bool())
+
+  when(sameSign) {
+    sum   := aAligned +& bAligned
+    rSign := aSign
+  }.otherwise {
+    when(aAligned >= bAligned) {
+      sum   := aAligned - bAligned
+      rSign := aSign
+    }.otherwise {
+      sum   := bAligned - aAligned
+      rSign := bSign
+    }
+  }
+
+  // Normalize: find leading 1
+  // After alignment, implicit 1 is at bit 23 of the 24-bit aligned values.
+  // After addition, the 25-bit sum has leading 1 at bit 24 (carry) or bit 23 (normal) or lower.
+  val lzRaw = PriorityEncoder(Reverse(sum))
+  val needNorm = lzRaw > 1.U
+  val normAmt  = lzRaw - 1.U
+  val normShift = Mux(needNorm, Mux(normAmt > rExp, rExp, normAmt), 0.U)
+  val normSum = (sum << normShift)(23, 0)
+  val normExp = rExp - normShift
+
+  // Extract 10 mantissa bits for FP16
+  val finalMan = Mux(sum(24),
+    sum(23, 14),     // carry: implicit 1 at bit 24, mantissa = bits 23..14
+    normSum(22, 13)  // no carry: implicit 1 at bit 23, mantissa = bits 22..13
+  )
+  val finalExp = Mux(sum(24), rExp + 1.U, normExp)
+
+  // Overflow → infinity
+  val overflow = finalExp > 30.U
+  // Pack result
+  val packed = Cat(rSign, finalExp(4, 0), finalMan)
+  val inf    = Cat(rSign, 0x1F.U(5.W), 0.U(10.W))
+
+  io.out := Mux(aIsZero, io.b,
+            Mux(bIsZero, io.a,
+            Mux(sum === 0.U, 0.U(16.W),
+            Mux(overflow, inf, packed))))
+}
+
+// FP16 × FP16 → FP16 multiplier (combinational, single cycle)
+// Used for VECTOR core SIMD lanes (truncates product to FP16)
+class FP16MulFP16 extends Module {
+  val io = IO(new Bundle {
+    val a   = Input(UInt(16.W))
+    val b   = Input(UInt(16.W))
+    val out = Output(UInt(16.W))
+  })
+
+  val aSign = FP16Utils.fp16Sign(io.a)
+  val bSign = FP16Utils.fp16Sign(io.b)
+  val aExp  = FP16Utils.fp16Exp(io.a)
+  val bExp  = FP16Utils.fp16Exp(io.b)
+  val aMan  = FP16Utils.fp16Man(io.a)
+  val bMan  = FP16Utils.fp16Man(io.b)
+
+  val aIsZero = aExp === 0.U && aMan === 0.U
+  val bIsZero = bExp === 0.U && bMan === 0.U
+
+  val aFull = Cat(Mux(aExp =/= 0.U, 1.U(1.W), 0.U(1.W)), aMan)  // 11 bits
+  val bFull = Cat(Mux(bExp =/= 0.U, 1.U(1.W), 0.U(1.W)), bMan)  // 11 bits
+
+  val product = (aFull * bFull)(21, 0)  // 22 bits
+
+  val rSign = aSign ^ bSign
+
+  // Exponent: aExp + bExp - bias(15)
+  val expSum = aExp +& bExp  // 6-bit
+  val biasedExp = expSum -& 15.U(6.W)
+
+  // Normalize
+  val normalized = product(21)
+  val rExp = Mux(normalized, biasedExp + 1.U, biasedExp)
+  // Extract top 10 mantissa bits from 22-bit product
+  val rMan = Mux(normalized, product(20, 11), product(19, 10))
+
+  // Overflow → infinity, underflow → zero
+  val overflow  = rExp > 30.U
+  val underflow = biasedExp === 0.U || expSum < 15.U
+
+  val packed = Cat(rSign, rExp(4, 0), rMan)
+  val inf    = Cat(rSign, 0x1F.U(5.W), 0.U(10.W))
+
+  io.out := Mux(aIsZero || bIsZero, 0.U(16.W),
+            Mux(underflow, 0.U(16.W),
+            Mux(overflow, inf, packed)))
+}
+
+// 16-wide FP16 SIMD add: operates on a 256-bit word (16 × FP16 lanes)
+class FP16SIMDAdd extends Module {
+  val io = IO(new Bundle {
+    val a   = Input(UInt(256.W))
+    val b   = Input(UInt(256.W))
+    val out = Output(UInt(256.W))
+  })
+  val lanes = (0 until 16).map { i =>
+    val adder = Module(new FP16Add)
+    adder.io.a := io.a(i * 16 + 15, i * 16)
+    adder.io.b := io.b(i * 16 + 15, i * 16)
+    adder.io.out
+  }
+  io.out := Cat(lanes.reverse)
+}
+
+// 16-wide FP16 SIMD mul: operates on a 256-bit word (16 × FP16 lanes)
+class FP16SIMDMul extends Module {
+  val io = IO(new Bundle {
+    val a   = Input(UInt(256.W))
+    val b   = Input(UInt(256.W))
+    val out = Output(UInt(256.W))
+  })
+  val lanes = (0 until 16).map { i =>
+    val mul = Module(new FP16MulFP16)
+    mul.io.a := io.a(i * 16 + 15, i * 16)
+    mul.io.b := io.b(i * 16 + 15, i * 16)
+    mul.io.out
+  }
+  io.out := Cat(lanes.reverse)
+}
+
 // Single FP16 × FP16 → FP32 multiplier (combinational, single cycle)
 class FP16Mul extends Module {
   val io = IO(new Bundle {

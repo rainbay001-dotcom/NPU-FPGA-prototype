@@ -53,8 +53,8 @@ class VectorCore(val p: NPUClusterParams) extends Module {
   val src0Data = Wire(UInt(256.W))
   val src1Data = Wire(UInt(256.W))
 
-  // Internal read: 2-cycle pipeline (read src0, then src1, then compute)
-  val sRead0 :: sRead1 :: sCalc :: sWrite :: Nil = Enum(4)
+  // Internal pipeline: read src0, read src1, capture src1, compute, write
+  val sRead0 :: sRead1 :: sCapture :: sCalc :: sWrite :: Nil = Enum(5)
   val phase = RegInit(sRead0)
 
   val src0Reg = Reg(UInt(256.W))
@@ -81,39 +81,30 @@ class VectorCore(val p: NPUClusterParams) extends Module {
   src0Data := ub.io.read.data
   src1Data := ub.io.read.data
 
-  // ---- ALU: operates on 256-bit vectors (16 × FP16) ----
-  // For prototype, implement element-wise on packed FP16 words
-  // Real hardware would have 16-wide FP16 SIMD lanes
+  // ---- ALU: 16-wide FP16 SIMD lanes ----
+  val simdAdd = Module(new FP16SIMDAdd)
+  val simdMul = Module(new FP16SIMDMul)
 
-  def fp16Add(a: UInt, b: UInt): UInt = {
-    // Placeholder: for FPGA we'd instantiate 16 FP16 adders
-    // For simulation, treat as bit patterns (actual math in test harness)
-    a  // TODO: implement 16-wide FP16 add
-  }
-
-  def fp16Mul(a: UInt, b: UInt): UInt = {
-    a  // TODO: implement 16-wide FP16 mul
-  }
+  simdAdd.io.a := src0Reg
+  simdAdd.io.b := src1Reg
+  simdMul.io.a := src0Reg
+  simdMul.io.b := src1Reg
 
   def fp16Relu(a: UInt): UInt = {
-    // ReLU: zero out negative FP16 values (sign bit = bit 15 of each 16-bit lane)
-    val result = Wire(UInt(256.W))
     val lanes = VecInit((0 until 16).map { i =>
       val elem = a(i * 16 + 15, i * 16)
-      Mux(elem(15), 0.U(16.W), elem)  // if sign bit set, output 0
+      Mux(elem(15), 0.U(16.W), elem)
     })
-    result := Cat(lanes.reverse)
-    result
+    Cat(lanes.reverse)
   }
 
   // ALU operation select
   val aluResult = Wire(UInt(256.W))
   aluResult := 0.U
   switch(cmdReg.opcode) {
-    is(NPUConsts.Opcode.VADD)  { aluResult := fp16Add(src0Reg, src1Reg) }
-    is(NPUConsts.Opcode.VMUL)  { aluResult := fp16Mul(src0Reg, src1Reg) }
+    is(NPUConsts.Opcode.VADD)  { aluResult := simdAdd.io.out }
+    is(NPUConsts.Opcode.VMUL)  { aluResult := simdMul.io.out }
     is(NPUConsts.Opcode.VRELU) { aluResult := fp16Relu(src0Reg) }
-    // More ops would go here: VSUB, VEXP, VLN, VSQRT, VABS, VMAX, VMIN, VCONV...
   }
 
   switch(state) {
@@ -137,10 +128,13 @@ class VectorCore(val p: NPUClusterParams) extends Module {
           src0Reg := ub.io.read.data
           ub.io.read.en := true.B
           ub.io.read.addr := cmdReg.src1 + elemIdx
+          phase := sCapture
+        }
+        is(sCapture) {
+          src1Reg := ub.io.read.data
           phase := sCalc
         }
         is(sCalc) {
-          src1Reg := ub.io.read.data
           resultReg := aluResult
           phase := sWrite
         }
