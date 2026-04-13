@@ -1,30 +1,30 @@
-# Da Vinci NPU FPGA Prototype — Code Walkthrough
+# NPU FPGA Prototype — Code Walkthrough
 
 *Date: 2026-04-13*
 
-This document walks through every source file in the Da Vinci NPU FPGA
+This document walks through every source file in the NPU FPGA
 prototype, explaining what each module does, how the pieces connect, and the
-key design decisions that map the real Ascend 910C (Da Vinci C220) architecture
+key design decisions that map the reference NPU architecture
 to synthesisable Chisel RTL.
 
 For the high-level architecture, scaling decisions, and FPGA resource
 estimates see the companion
-[design document](design-davinci-npu-prototype.md).
+[design document](design-npu-prototype.md).
 
 ---
 
 ## Repository layout
 
 ```
-davinci-npu/
+NPU-FPGA-prototype/
 ├── build.mill                              # Mill 1.1.5 build definition
 ├── docs/
-│   ├── design-davinci-npu-prototype.md     # Architecture & design doc
-│   └── walkthrough-davinci-npu-code.md     # This file
+│   ├── design-npu-prototype.md            # Architecture & design doc
+│   └── walkthrough-npu-code.md            # This file
 ├── src/
-│   ├── main/scala/davinci/
+│   ├── main/scala/npu/
 │   │   ├── common/
-│   │   │   ├── DaVinciParams.scala         # Configuration & opcode constants
+│   │   │   ├── NPUParams.scala            # Configuration & opcode constants
 │   │   │   ├── Scratchpad.scala            # SRAM primitives (simple + banked)
 │   │   │   └── FP16.scala                  # IEEE 754 FP16 mul, FP32 add
 │   │   ├── core/
@@ -38,10 +38,10 @@ davinci-npu/
 │   │   ├── cluster/
 │   │   │   └── NPUCluster.scala            # Top integration (cores + L2)
 │   │   └── soc/
-│   │       └── DaVinciSoC.scala            # SoC wrapper + command queue
-│   └── test/scala/davinci/
+│   │       └── NPUSoC.scala                # SoC wrapper + command queue
+│   └── test/scala/npu/
 │       └── CubeCoreTest.scala              # 6 elaboration/reset smoke tests
-├── davinci/src -> ../src                   # Symlink for Mill SbtModule convention
+├── npu/src -> ../src                       # Symlink for Mill SbtModule convention
 └── out/                                    # Mill build artifacts (gitignored)
 ```
 
@@ -49,9 +49,9 @@ Total: **~1 380 lines of Chisel** across 10 source files.
 
 ---
 
-## 1. `common/DaVinciParams.scala` — Configuration & Constants
+## 1. `common/NPUParams.scala` — Configuration & Constants
 
-**96 lines** | Package `davinci.common`
+**96 lines** | Package `npu.common`
 
 This is the foundation every other module imports.  Three nested case classes
 capture the 910C's memory hierarchy:
@@ -91,7 +91,7 @@ System-level parameters:
 
 \* Test default; design doc targets 2 MB for FPGA.
 
-### `DaVinciConsts.Opcode`
+### `NPUConsts.Opcode`
 
 8-bit opcodes grouped by execution unit:
 
@@ -109,7 +109,7 @@ These opcodes are used in command dispatch by `NPUCluster`.
 
 ## 2. `common/Scratchpad.scala` — SRAM Primitives
 
-**73 lines** | Package `davinci.common`
+**73 lines** | Package `npu.common`
 
 Two SRAM variants that map to FPGA block RAM.
 
@@ -148,7 +148,7 @@ is banked for SIMD throughput.
 
 ## 3. `common/FP16.scala` — IEEE 754 Arithmetic
 
-**148 lines** | Package `davinci.common`
+**148 lines** | Package `npu.common`
 
 The computational heart.  Two modules implement the FP16×FP16→FP32 MAC
 that the CUBE core's 256 multiply-accumulate units use.
@@ -196,7 +196,7 @@ for field manipulation.
 
 ## 4. `core/CubeCore.scala` — The Matrix Engine
 
-**217 lines** | Package `davinci.core`
+**217 lines** | Package `npu.core`
 
 This is the most complex module — one 16×16×16 CUBE core implementing the
 `C = A × B` matrix multiply.
@@ -285,7 +285,7 @@ total.  Uses valid/ready handshake; advances `wordCount` only when
 
 ## 5. `vector/VectorCore.scala` — Element-wise ALU
 
-**161 lines** | Package `davinci.vector`
+**161 lines** | Package `npu.vector`
 
 Processes element-wise operations (add, multiply, ReLU) on vectors stored
 in the 192 KB unified buffer (UB).
@@ -345,7 +345,7 @@ Fields: opcode, src0Addr, src1Addr, dstAddr (UB addresses), len (number of
 
 ## 6. `fixpipe/Fixpipe.scala` — Post-processing Pipeline
 
-**137 lines** | Package `davinci.fixpipe`
+**137 lines** | Package `npu.fixpipe`
 
 Sits between CubeCore's L0C drain output and the UB or L1, performing
 post-processing on CUBE results.
@@ -390,7 +390,7 @@ Control bundle: `enableDequant`, `enableBias`, `enableRelu`, `nz2nd`,
 
 ## 7. `dma/MTE.scala` — Memory Transfer Engine
 
-**203 lines** | Package `davinci.dma`
+**203 lines** | Package `npu.dma`
 
 The DMA controller handling **all** data movement in the NPU — no core
 accesses memory directly.
@@ -444,7 +444,7 @@ nd2nz/nz2nd flags (for Fractal-Z format conversion, not yet implemented).
 
 ## 8. `cluster/NPUCluster.scala` — Integration
 
-**174 lines** | Package `davinci.cluster`
+**174 lines** | Package `npu.cluster`
 
 The "NPU die" equivalent — wires all cores, Fixpipe, MTE, and the shared
 L2 together.
@@ -530,9 +530,9 @@ prototyping.
 
 ---
 
-## 9. `soc/DaVinciSoC.scala` — SoC Wrapper
+## 9. `soc/NPUSoC.scala` — SoC Wrapper
 
-**71 lines** | Package `davinci.soc`
+**71 lines** | Package `npu.soc`
 
 Thin top-level shell:
 
@@ -545,11 +545,11 @@ External ports:
 - `mem` — AXI4 memory port (passed through from MTE)
 - `status` — busy flag + queue depth
 
-`DaVinciSoCMain` object provides a `main` method for Verilog generation:
+`NPUSoCMain` object provides a `main` method for Verilog generation:
 
 ```scala
-object DaVinciSoCMain extends App {
-  chisel3.emitVerilog(new DaVinciSoC(NPUClusterParams()), ...)
+object NPUSoCMain extends App {
+  chisel3.emitVerilog(new NPUSoC(NPUClusterParams()), ...)
 }
 ```
 
@@ -561,7 +561,7 @@ processor-driven command stream.
 
 ## 10. `test/CubeCoreTest.scala` — Elaboration Tests
 
-**101 lines** | Package `davinci`
+**101 lines** | Package `npu`
 
 Six tests, one per major module, using `chisel3.simulator.EphemeralSimulator`.
 
@@ -593,7 +593,7 @@ simulate(new Module(p)) { c =>
 | 3 | Fixpipe      | `out.valid == 0` after reset |
 | 4 | MTE          | `status.busy == 0` after reset |
 | 5 | NPUCluster   | `busy == 0` after reset |
-| 6 | DaVinciSoC   | `status.busy == 0` after reset |
+| 6 | NPUSoC       | `status.busy == 0` after reset |
 
 All 6 pass.  These are elaboration + reset smoke tests — they verify that
 every module compiles through FIRRTL, instantiates correctly, and reaches
@@ -620,7 +620,7 @@ Host                           NPU
 8. MTE: UB → L1 → L2 → HBM    Store result back to external memory
 ```
 
-Each step is a separate command enqueued via `DaVinciSoC.cmdWrite`.  The
+Each step is a separate command enqueued via `NPUSoC.cmdWrite`.  The
 16-deep command queue allows pipelining: the host can enqueue the next
 tile's DMA while the current tile is still computing.
 
@@ -631,7 +631,7 @@ tile's DMA while the current tile is still computing.
 ### Mill 1.1.5 (`build.mill`)
 
 ```scala
-object davinci extends SbtModule {
+object npu extends SbtModule {
   def mvnDeps = Seq(mvn"org.chipsalliance::chisel:7.3.0")
   def scalacPluginMvnDeps = Seq(mvn"org.chipsalliance:::chisel-plugin:7.3.0")
   object test extends SbtTests with TestModule.ScalaTest {
@@ -647,15 +647,15 @@ Key differences from older Mill versions (e.g. XiangShan's 0.12.15):
 
 ### SbtModule path convention
 
-Mill's `SbtModule` named `davinci` expects sources at `davinci/src/`.  A
-symlink `davinci/src → ../src` allows us to keep the standard
+Mill's `SbtModule` named `npu` expects sources at `npu/src/`.  A
+symlink `npu/src → ../src` allows us to keep the standard
 `src/main/scala` layout at the repo root.
 
 ### Commands
 
 ```bash
-mill -i davinci.compile    # Compile all sources
-mill -i davinci.test       # Run all tests (6 elaboration smoke tests)
+mill -i npu.compile    # Compile all sources
+mill -i npu.test       # Run all tests (6 elaboration smoke tests)
 ```
 
 ---

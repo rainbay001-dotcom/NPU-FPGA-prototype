@@ -1,11 +1,11 @@
-// Da Vinci NPU Prototype — Configuration Parameters
-// Modeled after Ascend 910C (9362) Da Vinci C220 architecture
-package davinci.common
+// NPU FPGA Prototype — Configuration Parameters
+// Modeled after a split-architecture NPU with CUBE + VECTOR cores
+package npu.common
 
 import chisel3._
 import chisel3.util._
 
-// Per-core buffer sizes (bytes), matching 910C spec
+// Per-core buffer sizes (bytes)
 case class CoreBufferParams(
   l0aSize:  Int = 64 * 1024,   // 64 KB — CUBE input A (activations)
   l0bSize:  Int = 64 * 1024,   // 64 KB — CUBE input B (weights, NZ format)
@@ -29,11 +29,11 @@ case class CubeTileParams(
 
 // Cluster-level parameters
 case class NPUClusterParams(
-  cubeCores:   Int = 1,           // 910C has 20; FPGA prototype: 1-2
-  vectorCores: Int = 2,           // 910C has 40; FPGA prototype: 2-4
-  l2SizeKB:    Int = 2 * 1024,    // 2 MB for FPGA (910C: 168 MB)
+  cubeCores:   Int = 1,           // FPGA prototype: 1-2
+  vectorCores: Int = 2,           // FPGA prototype: 2-4
+  l2SizeKB:    Int = 2 * 1024,    // 2 MB for FPGA
   l2Pages:     Int = 64,
-  freqMHz:     Int = 200,         // FPGA target freq (910C: 1500 MHz)
+  freqMHz:     Int = 200,         // FPGA target freq
   dataWidth:   Int = 256,         // AXI data width bits
   addrWidth:   Int = 40,          // address bits
   buffers:     CoreBufferParams  = CoreBufferParams(),
@@ -42,7 +42,7 @@ case class NPUClusterParams(
 
 // Fixed-point representation for FP16 MAC: we use UInt(16.W) for FP16 bit patterns
 // and UInt(32.W) for FP32 accumulators. Actual IEEE 754 logic is in the MAC unit.
-object DaVinciConsts {
+object NPUConsts {
   val FP16_WIDTH  = 16
   val FP32_WIDTH  = 32
   val BF16_WIDTH  = 16

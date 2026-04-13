@@ -1,5 +1,5 @@
 // Generic scratchpad SRAM module — used for L0A, L0B, L0C, L1, UB
-package davinci.common
+package npu.common
 
 import chisel3._
 import chisel3.util._

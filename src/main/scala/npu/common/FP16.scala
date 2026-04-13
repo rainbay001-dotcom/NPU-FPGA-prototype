@@ -1,6 +1,6 @@
 // IEEE 754 FP16 multiply-accumulate building blocks
 // For FPGA prototype: use actual bit-level FP16 arithmetic
-package davinci.common
+package npu.common
 
 import chisel3._
 import chisel3.util._

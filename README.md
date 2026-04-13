@@ -1,13 +1,13 @@
 # NPU-FPGA-prototype
 
-FPGA prototype of a scaled-down Huawei Ascend 910C (Da Vinci C220) NPU, written in Chisel 7.3.0.
+FPGA prototype of a scaled-down split-architecture NPU, written in Chisel 7.3.0.
 
 ## Architecture
 
 The prototype implements a minimal but functionally complete NPU datapath:
 
-| Unit | Prototype | Real 910C | Description |
-|------|-----------|-----------|-------------|
+| Unit | Prototype | Reference NPU | Description |
+|------|-----------|---------------|-------------|
 | CUBE cores | 1 | 20 | 16×16×16 FP16×FP16→FP32 MAC array |
 | VECTOR cores | 2 | 40 | Element-wise ALU + 192 KB banked unified buffer |
 | Fixpipe | 1 | 20 | 3-stage post-processing (dequant → bias → ReLU) |
@@ -17,13 +17,13 @@ The prototype implements a minimal but functionally complete NPU datapath:
 
 \* Test default; FPGA target is 2 MB on Alveo U280.
 
-Per-core buffer sizes match the real 910C exactly (L0A=64K, L0B=64K, L0C=128K, L1=512K, UB=192K) so kernel code is portable.
+Per-core buffer sizes match the reference NPU exactly (L0A=64K, L0B=64K, L0C=128K, L1=512K, UB=192K) so kernel code is portable.
 
 ### Block diagram
 
 ```
                     ┌─────────────────────────────────────────┐
-                    │              DaVinciSoC                  │
+                    │                NPUSoC                    │
                     │  ┌──────────┐                            │
   cmdWrite ────────►│  │ Queue(16)│──► NPUCluster              │
                     │  └──────────┘     │                      │
@@ -58,20 +58,20 @@ Per-core buffer sizes match the real 910C exactly (L0A=64K, L0B=64K, L0C=128K, L
 ```
 ├── build.mill                              # Mill 1.1.5 build definition
 ├── docs/
-│   ├── design-davinci-npu-prototype.md     # Architecture & design document
-│   └── walkthrough-davinci-npu-code.md     # Detailed code walkthrough
+│   ├── design-npu-prototype.md             # Architecture & design document
+│   └── walkthrough-npu-code.md             # Detailed code walkthrough
 ├── src/
-│   ├── main/scala/davinci/
-│   │   ├── common/                         # DaVinciParams, Scratchpad, FP16
+│   ├── main/scala/npu/
+│   │   ├── common/                         # NPUParams, Scratchpad, FP16
 │   │   ├── core/                           # CubeCore (MAC array + FSM)
 │   │   ├── vector/                         # VectorCore (ALU + banked UB)
 │   │   ├── fixpipe/                        # Fixpipe (3-stage pipeline)
 │   │   ├── dma/                            # MTE (DMA engine, 8 paths)
 │   │   ├── cluster/                        # NPUCluster (integration)
-│   │   └── soc/                            # DaVinciSoC (top + cmd queue)
-│   └── test/scala/davinci/
+│   │   └── soc/                            # NPUSoC (top + cmd queue)
+│   └── test/scala/npu/
 │       └── CubeCoreTest.scala              # 6 elaboration/reset tests
-└── davinci/src -> ../src                   # Symlink for Mill SbtModule
+└── npu/src -> ../src                       # Symlink for Mill SbtModule
 ```
 
 ~1 380 lines of Chisel across 10 source files.
@@ -82,13 +82,13 @@ Requires [Mill](https://mill-build.org/) 1.1.5+ and JDK 11+.
 
 ```bash
 # Compile
-mill -i davinci.compile
+mill -i npu.compile
 
 # Run all tests (6 elaboration + reset smoke tests)
-mill -i davinci.test
+mill -i npu.test
 
 # Generate Verilog
-mill -i davinci.runMain davinci.soc.DaVinciSoCMain
+mill -i npu.runMain npu.soc.NPUSoCMain
 ```
 
 ## Status
@@ -107,5 +107,5 @@ Alveo U280 (Virtex UltraScale+ XCU280) — has HBM2 for realistic external memor
 
 ## Documentation
 
-- [Design Document](docs/design-davinci-npu-prototype.md) — architecture, scaling decisions, resource estimates
-- [Code Walkthrough](docs/walkthrough-davinci-npu-code.md) — per-file explanation of the RTL
+- [Design Document](docs/design-npu-prototype.md) — architecture, scaling decisions, resource estimates
+- [Code Walkthrough](docs/walkthrough-npu-code.md) — per-file explanation of the RTL

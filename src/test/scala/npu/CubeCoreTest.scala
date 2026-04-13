@@ -1,17 +1,17 @@
-// Elaboration and reset smoke test for all Da Vinci NPU modules
-package davinci
+// Elaboration and reset smoke test for all NPU modules
+package npu
 
 import chisel3._
 import chisel3.simulator.EphemeralSimulator._
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
-import davinci.common._
-import davinci.core._
-import davinci.vector._
-import davinci.fixpipe._
-import davinci.dma._
-import davinci.cluster._
-import davinci.soc._
+import npu.common._
+import npu.core._
+import npu.vector._
+import npu.fixpipe._
+import npu.dma._
+import npu.cluster._
+import npu.soc._
 
 class CubeCoreElaborationTest extends AnyFlatSpec with Matchers {
   val p = NPUClusterParams(cubeCores = 1, vectorCores = 2, l2SizeKB = 64)
@@ -86,8 +86,8 @@ class CubeCoreElaborationTest extends AnyFlatSpec with Matchers {
     }
   }
 
-  "DaVinciSoC" should "elaborate and idle after reset" in {
-    simulate(new DaVinciSoC(p)) { c =>
+  "NPUSoC" should "elaborate and idle after reset" in {
+    simulate(new NPUSoC(p)) { c =>
       c.reset.poke(true.B); c.clock.step(1); c.reset.poke(false.B)
       c.io.cmdWrite.valid.poke(false.B)
       c.io.mem.r.valid.poke(false.B)

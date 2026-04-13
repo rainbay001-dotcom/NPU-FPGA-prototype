@@ -2,17 +2,17 @@
 // Handles explicit data movement between all memory levels:
 //   HBM ↔ L2 ↔ L1 ↔ L0A/L0B/UB
 //
-// On 910C, all memory except L2 is software-managed scratchpad.
-// The programmer (CANN compiler) explicitly issues DMA commands via MTE.
+// All memory except L2 is software-managed scratchpad.
+// The compiler explicitly issues DMA commands via MTE.
 // MTE goes through SMMU/TLB for VA→PA translation on HBM accesses.
 //
 // Key feature: double-buffering support — while CUBE processes tile[i],
 // MTE prefetches tile[i+1] into the alternate L1 region.
-package davinci.dma
+package npu.dma
 
 import chisel3._
 import chisel3.util._
-import davinci.common._
+import npu.common._
 
 class DMACommand extends Bundle {
   val opcode  = UInt(8.W)
@@ -114,23 +114,23 @@ class MTE(val p: NPUClusterParams) extends Module {
       val srcAddr = cmdReg.srcAddr(19, 0) + wordsDone  // truncate to scratchpad range
 
       switch(op) {
-        is(DaVinciConsts.Opcode.DMA_L2_TO_L1) {
+        is(NPUConsts.Opcode.DMA_L2_TO_L1) {
           io.l2.read.en := true.B
           io.l2.read.addr := srcAddr
         }
-        is(DaVinciConsts.Opcode.DMA_L1_TO_L0A) {
+        is(NPUConsts.Opcode.DMA_L1_TO_L0A) {
           io.l1.read.en := true.B
           io.l1.read.addr := srcAddr
         }
-        is(DaVinciConsts.Opcode.DMA_L1_TO_L0B) {
+        is(NPUConsts.Opcode.DMA_L1_TO_L0B) {
           io.l1.read.en := true.B
           io.l1.read.addr := srcAddr
         }
-        is(DaVinciConsts.Opcode.DMA_L1_TO_UB) {
+        is(NPUConsts.Opcode.DMA_L1_TO_UB) {
           io.l1.read.en := true.B
           io.l1.read.addr := srcAddr
         }
-        is(DaVinciConsts.Opcode.DMA_HBM_TO_L2) {
+        is(NPUConsts.Opcode.DMA_HBM_TO_L2) {
           // External memory read via AXI
           io.mem.ar.valid := true.B
           io.mem.ar.bits.addr := cmdReg.srcAddr + (wordsDone << 5)  // byte address
@@ -152,36 +152,36 @@ class MTE(val p: NPUClusterParams) extends Module {
 
       // Capture read data from previous cycle
       switch(op) {
-        is(DaVinciConsts.Opcode.DMA_L2_TO_L1)  { writeData := io.l2.read.data }
-        is(DaVinciConsts.Opcode.DMA_L1_TO_L0A)  { writeData := io.l1.read.data }
-        is(DaVinciConsts.Opcode.DMA_L1_TO_L0B)  { writeData := io.l1.read.data }
-        is(DaVinciConsts.Opcode.DMA_L1_TO_UB)   { writeData := io.l1.read.data }
-        is(DaVinciConsts.Opcode.DMA_HBM_TO_L2) {
+        is(NPUConsts.Opcode.DMA_L2_TO_L1)  { writeData := io.l2.read.data }
+        is(NPUConsts.Opcode.DMA_L1_TO_L0A)  { writeData := io.l1.read.data }
+        is(NPUConsts.Opcode.DMA_L1_TO_L0B)  { writeData := io.l1.read.data }
+        is(NPUConsts.Opcode.DMA_L1_TO_UB)   { writeData := io.l1.read.data }
+        is(NPUConsts.Opcode.DMA_HBM_TO_L2) {
           when(io.mem.r.valid) { writeData := io.mem.r.bits.data }
         }
       }
 
       // Write to destination
       switch(op) {
-        is(DaVinciConsts.Opcode.DMA_L2_TO_L1) {
+        is(NPUConsts.Opcode.DMA_L2_TO_L1) {
           io.l1.write.en := true.B
           io.l1.write.addr := dstAddr
           io.l1.write.data := writeData
         }
-        is(DaVinciConsts.Opcode.DMA_L1_TO_L0A) {
+        is(NPUConsts.Opcode.DMA_L1_TO_L0A) {
           io.l0a.write.en := true.B
           io.l0a.write.addr := dstAddr
           io.l0a.write.data := writeData
         }
-        is(DaVinciConsts.Opcode.DMA_L1_TO_L0B) {
+        is(NPUConsts.Opcode.DMA_L1_TO_L0B) {
           io.l0b.write.en := true.B
           io.l0b.write.addr := dstAddr
           io.l0b.write.data := writeData
         }
-        is(DaVinciConsts.Opcode.DMA_L1_TO_UB) {
+        is(NPUConsts.Opcode.DMA_L1_TO_UB) {
           // UB write goes through VectorCore's external port (connected at cluster level)
         }
-        is(DaVinciConsts.Opcode.DMA_HBM_TO_L2) {
+        is(NPUConsts.Opcode.DMA_HBM_TO_L2) {
           io.l2.write.en := true.B
           io.l2.write.addr := dstAddr
           io.l2.write.data := writeData

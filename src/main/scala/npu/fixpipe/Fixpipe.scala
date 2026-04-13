@@ -1,7 +1,7 @@
 // Fixpipe — Fixed-function post-processing pipeline
 // Sits between CUBE L0C output and L1/UB destinations
 //
-// Pipeline stages (910C):
+// Pipeline stages:
 //   1. Dequant:  INT32 → FP16/FP32
 //   2. Bias Add: add per-channel bias from fb0-fb3 buffers (7 KB total)
 //   3. Requant:  FP16/FP32 → INT8
@@ -9,12 +9,12 @@
 //   5. NZ→ND:   Fractal Z to row-major format conversion
 //
 // Each stage can be independently enabled/disabled per command.
-package davinci.fixpipe
+package npu.fixpipe
 
 import chisel3._
 import chisel3.util._
-import davinci.common._
-import davinci.core.CubeTileOutput
+import npu.common._
+import npu.core.CubeTileOutput
 
 class FixpipeConfig extends Bundle {
   val enableDequant  = Bool()
@@ -86,7 +86,7 @@ class Fixpipe(val p: NPUClusterParams) extends Module {
     when(io.config.enableBias) {
       val biasData = fb.read(io.config.biasAddr + wordCount)
       // Add bias word-by-word (8 × FP32 lanes)
-      // Simplified: XOR-based placeholder — real hardware uses FP32 adders
+      // Simplified: placeholder — real hardware uses FP32 adders
       s2_data := s1_data  // TODO: actual FP32 vector add with bias
     }.otherwise {
       s2_data := s1_data

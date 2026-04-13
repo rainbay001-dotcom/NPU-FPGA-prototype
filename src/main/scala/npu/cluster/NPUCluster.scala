@@ -2,7 +2,7 @@
 // This is the "NPU die" equivalent: parametric number of CUBE/VECTOR cores
 // sharing a common L2 cache with an external memory port (AXI4) to DDR/HBM.
 //
-// Architecture (matching 910C split mode):
+// Architecture (split-mode NPU):
 //   Task Scheduler → dispatches commands to CUBE / VECTOR / MTE
 //   MTE → moves data between memory levels
 //   CUBE core → reads L0A/L0B, computes mmad, writes L0C
@@ -10,15 +10,15 @@
 //   VECTOR core → reads/writes UB, executes element-wise ops
 //
 // Interconnect: L2 is shared by all cores. Each core has private L0/L1/UB.
-package davinci.cluster
+package npu.cluster
 
 import chisel3._
 import chisel3.util._
-import davinci.common._
-import davinci.core._
-import davinci.vector._
-import davinci.fixpipe._
-import davinci.dma._
+import npu.common._
+import npu.core._
+import npu.vector._
+import npu.fixpipe._
+import npu.dma._
 
 // Command from the Task Scheduler (RISC-V control core)
 class NPUCommand extends Bundle {

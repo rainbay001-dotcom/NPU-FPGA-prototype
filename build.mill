@@ -5,7 +5,7 @@ import mill.scalalib._
 
 val defaultScalaVersion = "2.13.17"
 
-object davinci extends SbtModule {
+object npu extends SbtModule {
   def scalaVersion: T[String] = defaultScalaVersion
 
   def millSourcePath = os.Path(sys.env("MILL_WORKSPACE_ROOT"))

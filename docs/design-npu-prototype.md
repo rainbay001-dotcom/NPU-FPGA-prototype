@@ -1,7 +1,7 @@
-# Da Vinci NPU FPGA Prototype — Design Document
+# NPU FPGA Prototype — Design Document
 
-**Project:** `davinci-npu`
-**Location:** `/Users/ray/Documents/Repo/davinci-npu/`
+**Project:** `NPU-FPGA-prototype`
+**Location:** `/Users/ray/Documents/Repo/NPU-FPGA-prototype/`
 **Date:** 2026-04-13
 **Status:** Skeleton RTL complete — all modules elaborating and simulating. Functional tests pending.
 
@@ -9,11 +9,10 @@
 
 ## 1. Motivation
 
-The Ascend 910C (Da Vinci C220, SoC `Ascend910_9362`) is Huawei's high-end AI
-training NPU.  Its architecture — software-managed scratchpads, split
-CUBE/VECTOR cores, explicit DMA, Fractal Z memory layout — is fundamentally
-different from GPUs and CPUs, making it a compelling target for hardware
-exploration.
+The 910C is a high-end AI training NPU.  Its split-architecture design —
+software-managed scratchpads, split CUBE/VECTOR cores, explicit DMA, Fractal Z
+memory layout — is fundamentally different from GPUs and CPUs, making it a
+compelling target for hardware exploration.
 
 We already have:
 - A verified two-core XiangShan RISC-V design (Chisel, CHI coherence)
@@ -72,7 +71,7 @@ Per-core buffer sizes are kept identical to 910C so kernel code runs unmodified.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                        DaVinciSoC                                   │
+│                        NPUSoC                                       │
 │                                                                     │
 │   ┌──────────────────┐                                              │
 │   │  Command Queue    │ ◄── cmdWrite (from RISC-V or testbench)     │
@@ -127,7 +126,7 @@ Per-core buffer sizes are kept identical to 910C so kernel code runs unmodified.
 
 ## 3. Module Design
 
-### 3.1 Parameter system (`common/DaVinciParams.scala`, 96 lines)
+### 3.1 Parameter system (`common/NPUParams.scala`, 96 lines)
 
 Three nested case classes configure the entire design:
 
@@ -155,10 +154,10 @@ NPUClusterParams
         └── n = 16
 ```
 
-All buffer sizes match the 910C `Ascend910_9362.ini` config exactly.
+All buffer sizes match the reference NPU config exactly.
 `NPUClusterParams` is threaded through every module as `val p`.
 
-**Opcode encoding** (`DaVinciConsts.Opcode`): 8-bit opcodes in four ranges:
+**Opcode encoding** (`NPUConsts.Opcode`): 8-bit opcodes in four ranges:
 - `0x01`: CUBE (`MMAD`)
 - `0x10–0x1E`: VECTOR ALU (`VADD`, `VMUL`, `VRELU`, etc.)
 - `0x30–0x37`: MTE DMA transfers
@@ -369,7 +368,7 @@ Top-level integration — the "NPU die" equivalent.
 and `coreIdx`.  Cluster decodes `target` in a `switch` and routes the
 embedded sub-command to the appropriate core using `when(coreIdx === i.U)`.
 
-### 3.9 SoC Top (`soc/DaVinciSoC.scala`, 71 lines)
+### 3.9 SoC Top (`soc/NPUSoC.scala`, 71 lines)
 
 Thin wrapper: NPUCluster + 16-deep command `Queue`.
 
@@ -465,22 +464,22 @@ the next tile, hiding DMA latency.
 
 **Build commands:**
 ```bash
-cd /Users/ray/Documents/Repo/davinci-npu
-mill -i davinci.compile       # compile all 9 sources (~6s)
-mill -i davinci.test           # run 6 elaboration tests (~20s)
+cd /Users/ray/Documents/Repo/NPU-FPGA-prototype
+mill -i npu.compile       # compile all 9 sources (~6s)
+mill -i npu.test           # run 6 elaboration tests (~20s)
 ```
 
 **Directory layout:**
 ```
-davinci-npu/
+NPU-FPGA-prototype/
 ├── build.mill                          # Mill build definition
-├── davinci/ → src (symlink)            # SbtModule path convention
+├── npu/ → src (symlink)                # SbtModule path convention
 ├── docs/
-│   └── design-davinci-npu-prototype.md # this document
+│   └── design-npu-prototype.md         # this document
 └── src/
-    ├── main/scala/davinci/
+    ├── main/scala/npu/
     │   ├── common/
-    │   │   ├── DaVinciParams.scala     # configuration (96 lines)
+    │   │   ├── NPUParams.scala         # configuration (96 lines)
     │   │   ├── Scratchpad.scala        # SRAM modules (73 lines)
     │   │   └── FP16.scala             # FP16 mul + FP32 add (148 lines)
     │   ├── core/
@@ -494,8 +493,8 @@ davinci-npu/
     │   ├── cluster/
     │   │   └── NPUCluster.scala       # top integration (174 lines)
     │   └── soc/
-    │       └── DaVinciSoC.scala       # SoC wrapper (71 lines)
-    └── test/scala/davinci/
+    │       └── NPUSoC.scala           # SoC wrapper (71 lines)
+    └── test/scala/npu/
         └── CubeCoreTest.scala         # 6 elaboration tests (101 lines)
 
 Total: 1,381 lines of Scala/Chisel
@@ -505,7 +504,7 @@ Total: 1,381 lines of Scala/Chisel
 
 ## 7. Test Status
 
-All 6 tests pass (`mill -i davinci.test`):
+All 6 tests pass (`mill -i npu.test`):
 
 | Test | Module | What it verifies |
 |------|--------|-----------------|
@@ -514,7 +513,7 @@ All 6 tests pass (`mill -i davinci.test`):
 | Fixpipe | `Fixpipe` | Elaborates, output valid=0 after reset |
 | MTE | `MTE` | Elaborates, status.busy=0 after reset |
 | NPUCluster | `NPUCluster` | Full cluster elaborates, all cores idle |
-| DaVinciSoC | `DaVinciSoC` | SoC with command queue, idle after reset |
+| NPUSoC | `NPUSoC` | SoC with command queue, idle after reset |
 
 These are **elaboration/reset** tests only.  No functional (data-through) tests
 yet.
@@ -546,7 +545,7 @@ yet.
 | SMMU/TLB | MTE uses physical addresses only |
 | SDMA (inter-chip) | Not applicable to single-chip FPGA prototype |
 | Functional tests | No end-to-end mmad verification |
-| Verilog generation | `DaVinciSoCMain` entry point exists but untested |
+| Verilog generation | `NPUSoCMain` entry point exists but untested |
 
 ### 8.3 Chisel warnings
 
@@ -594,4 +593,4 @@ multiplier to 2 cycles (split mantissa multiply from exponent/normalization).
 | **xPU-simulator** (`/Repo/xPU-simulator`) | Cycle-accurate software model of same architecture; validation oracle |
 | **910C hardware** (NPU server) | Ground truth for behavior and performance; profiling via msprof |
 | **Triton-Ascend** (`/Repo/triton`) | Kernel compiler targeting same ISA; test kernel source |
-| **PTO-ISA** (external) | Canonical instruction set documentation for Da Vinci |
+| **NPU ISA** (external) | Canonical instruction set documentation |

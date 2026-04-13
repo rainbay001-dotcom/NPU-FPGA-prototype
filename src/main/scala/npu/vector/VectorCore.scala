@@ -1,14 +1,14 @@
 // VECTOR Core — Element-wise ALU with 192 KB Unified Buffer (UB)
-// Models one of the 40 VECTOR cores on Ascend 910C (9362)
+// Models one VECTOR core in a split-architecture NPU
 //
 // The VECTOR core operates independently from CUBE cores (split architecture).
 // It reads/writes UB and executes vector ALU instructions: vadd, vmul, vexp, vrelu, etc.
 // UB receives data either from L1 (via MTE) or from Fixpipe (CUBE → Fixpipe → UB path).
-package davinci.vector
+package npu.vector
 
 import chisel3._
 import chisel3.util._
-import davinci.common._
+import npu.common._
 
 class VectorCommand extends Bundle {
   val opcode  = UInt(8.W)
@@ -110,9 +110,9 @@ class VectorCore(val p: NPUClusterParams) extends Module {
   val aluResult = Wire(UInt(256.W))
   aluResult := 0.U
   switch(cmdReg.opcode) {
-    is(DaVinciConsts.Opcode.VADD)  { aluResult := fp16Add(src0Reg, src1Reg) }
-    is(DaVinciConsts.Opcode.VMUL)  { aluResult := fp16Mul(src0Reg, src1Reg) }
-    is(DaVinciConsts.Opcode.VRELU) { aluResult := fp16Relu(src0Reg) }
+    is(NPUConsts.Opcode.VADD)  { aluResult := fp16Add(src0Reg, src1Reg) }
+    is(NPUConsts.Opcode.VMUL)  { aluResult := fp16Mul(src0Reg, src1Reg) }
+    is(NPUConsts.Opcode.VRELU) { aluResult := fp16Relu(src0Reg) }
     // More ops would go here: VSUB, VEXP, VLN, VSQRT, VABS, VMAX, VMIN, VCONV...
   }
 

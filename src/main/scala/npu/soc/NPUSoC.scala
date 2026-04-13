@@ -1,5 +1,5 @@
-// Da Vinci SoC Top — RISC-V control core + NPU cluster
-// The RISC-V core replaces the ARM-based Task Scheduler and AI CPUs.
+// NPU SoC Top — RISC-V control core + NPU cluster
+// The RISC-V core replaces the ARM-based Task Scheduler.
 // It issues NPU commands via memory-mapped registers.
 //
 // Memory map:
@@ -13,15 +13,15 @@
 // Full Rocket integration comes later; this version uses a
 // register-based command interface that can be driven from
 // simulation testbench or from an actual RISC-V core.
-package davinci.soc
+package npu.soc
 
 import chisel3._
 import chisel3.util._
-import davinci.common._
-import davinci.cluster._
-import davinci.dma.MemPortIO
+import npu.common._
+import npu.cluster._
+import npu.dma.MemPortIO
 
-class DaVinciSoCIO(val p: NPUClusterParams) extends Bundle {
+class NPUSoCIO(val p: NPUClusterParams) extends Bundle {
   // External memory port
   val mem = new MemPortIO(p.addrWidth, p.dataWidth)
 
@@ -35,29 +35,29 @@ class DaVinciSoCIO(val p: NPUClusterParams) extends Bundle {
   })
 }
 
-class DaVinciSoC(val p: NPUClusterParams = NPUClusterParams()) extends Module {
-  val io = IO(new DaVinciSoCIO(p))
+class NPUSoC(val p: NPUClusterParams = NPUClusterParams()) extends Module {
+  val io = IO(new NPUSoCIO(p))
 
   // NPU cluster
-  val npu = Module(new NPUCluster(p))
+  val cluster = Module(new NPUCluster(p))
 
   // Command queue (depth 16): buffers commands from RISC-V
   val cmdQueue = Module(new Queue(new NPUCommand, 16))
   cmdQueue.io.enq <> io.cmdWrite
-  npu.io.cmd <> cmdQueue.io.deq
+  cluster.io.cmd <> cmdQueue.io.deq
 
   // External memory
-  io.mem <> npu.io.mem
+  io.mem <> cluster.io.mem
 
   // Status
-  io.status.busy       := npu.io.busy
-  io.status.cubeBusy   := npu.io.cubeBusy
-  io.status.vectorBusy := npu.io.vectorBusy
-  io.status.mteBusy    := npu.io.mteBusy
+  io.status.busy       := cluster.io.busy
+  io.status.cubeBusy   := cluster.io.cubeBusy
+  io.status.vectorBusy := cluster.io.vectorBusy
+  io.status.mteBusy    := cluster.io.mteBusy
 }
 
 // Verilog generation entry point
-object DaVinciSoCMain extends App {
+object NPUSoCMain extends App {
   val p = NPUClusterParams(
     cubeCores   = 1,
     vectorCores = 2,
@@ -65,7 +65,7 @@ object DaVinciSoCMain extends App {
     freqMHz     = 200
   )
   chisel3.emitVerilog(
-    new DaVinciSoC(p),
+    new NPUSoC(p),
     Array("--target-dir", "build")
   )
 }

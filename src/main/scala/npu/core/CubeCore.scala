@@ -1,17 +1,17 @@
 // CUBE Core — 16×16×16 MAC array with L0A/L0B/L0C scratchpads and L1 buffer
-// Models one of the 20 CUBE cores on Ascend 910C (9362)
+// Models one CUBE core in a split-architecture NPU
 //
 // Dataflow per mmad:
 //   1. MTE loads tiles from HBM → L2 → L1 (double-buffered)
-//   2. L1 → L0A (activations, 512 GB/s) and L1 → L0B (weights/NZ, 256 GB/s)
+//   2. L1 → L0A (activations) and L1 → L0B (weights/NZ format)
 //   3. CUBE MAC: C[m][n] += A[m][k] * B[k][n] — one 16×16×16 tile per cycle
 //   4. Results accumulate in L0C across K tiles
 //   5. L0C → Fixpipe → L1 or UB
-package davinci.core
+package npu.core
 
 import chisel3._
 import chisel3.util._
-import davinci.common._
+import npu.common._
 
 class CubeCoreIO(val p: NPUClusterParams) extends Bundle {
   // Command interface (from Task Scheduler)
