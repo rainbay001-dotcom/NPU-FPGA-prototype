@@ -2,13 +2,13 @@
 package npu
 
 import chisel3._
-import chisel3.simulator.EphemeralSimulator._
+import chiseltest._
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 import npu.common._
 import npu.core._
 
-class CubeFunctionalTest extends AnyFlatSpec with Matchers {
+class CubeFunctionalTest extends AnyFlatSpec with ChiselScalatestTester with Matchers {
   val p = NPUClusterParams(cubeCores = 1, vectorCores = 2, l2SizeKB = 64)
 
   // IEEE 754 FP16 encoding helpers
@@ -39,16 +39,10 @@ class CubeFunctionalTest extends AnyFlatSpec with Matchers {
   }
 
   "CubeCore" should "compute a simple identity × constant matrix multiply" in {
-    // Test: A = identity-like (1.0 on diagonal, 0 elsewhere for row 0-3)
-    // Simpler: A = all 1.0, B = all 2.0
+    // Test: A = all 1.0, B = all 2.0
     // Expected: C[m][n] = sum_k(A[m][k] * B[k][n]) = sum_k(1.0 * 2.0) = 16 * 2.0 = 32.0
 
-    simulate(new CubeCore(p)) { c =>
-      // Reset
-      c.reset.poke(true.B)
-      c.clock.step(1)
-      c.reset.poke(false.B)
-
+    test(new CubeCore(p)) { c =>
       // Drive unused ports to safe defaults
       c.io.cmd.valid.poke(false.B)
       c.io.l0c_out.ready.poke(false.B)
@@ -59,7 +53,6 @@ class CubeFunctionalTest extends AnyFlatSpec with Matchers {
       c.clock.step(2)
 
       // ---- Step 1: Write A tile (all 1.0) into L0A via DMA port ----
-      // A is 16 rows, each row = 16 FP16 values = one 256-bit word
       val aRow = packRow(Seq.fill(16)(1.0f))
       for (i <- 0 until 16) {
         c.io.l0a.write.en.poke(true.B)
@@ -92,11 +85,8 @@ class CubeFunctionalTest extends AnyFlatSpec with Matchers {
       c.io.cmd.valid.poke(false.B)
 
       // ---- Step 4: Wait for compute to finish and drain ----
-      // FSM: sLoadA(16) + sLoadB(16) + sCompute(16) + sDrain(32) = 80 cycles
-      // But we need to accept the drain output
       c.io.l0c_out.ready.poke(true.B)
 
-      // Wait for drain to start (up to 60 cycles for load+compute)
       var cycles = 0
       while (c.io.l0c_out.valid.peek().litValue == 0 && cycles < 100) {
         c.clock.step(1)
@@ -121,8 +111,6 @@ class CubeFunctionalTest extends AnyFlatSpec with Matchers {
       outputWords.length shouldBe 32
 
       // ---- Step 6: Verify results ----
-      // Each output word has 8 FP32 values
-      // C[m][n] = sum_k(1.0 * 2.0) = 32.0 for all m,n
       val expected = 32.0f
       var errors = 0
       for (wordIdx <- 0 until 32) {
@@ -141,7 +129,6 @@ class CubeFunctionalTest extends AnyFlatSpec with Matchers {
       }
 
       if (errors > 0) {
-        // Print first output word for debugging
         val w0 = outputWords(0)
         println(f"First output word (raw): 0x${w0.toString(16)}")
         for (i <- 0 until 8) {
@@ -155,15 +142,7 @@ class CubeFunctionalTest extends AnyFlatSpec with Matchers {
   }
 
   it should "compute A=identity × B and get B back" in {
-    // A = identity matrix (1.0 on diagonal, 0 elsewhere)
-    // B = row i has all values = (i+1).0
-    // Expected: C = A × B = B (identity preserves B)
-
-    simulate(new CubeCore(p)) { c =>
-      c.reset.poke(true.B)
-      c.clock.step(1)
-      c.reset.poke(false.B)
-
+    test(new CubeCore(p)) { c =>
       c.io.cmd.valid.poke(false.B)
       c.io.l0c_out.ready.poke(false.B)
       c.io.l1.read.en.poke(false.B); c.io.l1.read.addr.poke(0.U)
@@ -173,7 +152,6 @@ class CubeFunctionalTest extends AnyFlatSpec with Matchers {
       c.clock.step(2)
 
       // Write A = identity matrix into L0A
-      // Row m: element k = 1.0 if k==m, else 0.0
       for (m <- 0 until 16) {
         val row = (0 until 16).map(k => if (k == m) 1.0f else 0.0f)
         c.io.l0a.write.en.poke(true.B)
@@ -228,7 +206,6 @@ class CubeFunctionalTest extends AnyFlatSpec with Matchers {
       outputWords.length shouldBe 32
 
       // Verify: C = I × B = B
-      // C[m][n] = sum_k(I[m][k] * B[k][n]) = B[m][n] = (m+1).0
       var errors = 0
       for (wordIdx <- 0 until 32) {
         val row = wordIdx / 2

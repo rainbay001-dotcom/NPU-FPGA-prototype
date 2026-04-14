@@ -3,7 +3,7 @@ package build
 import mill._
 import mill.scalalib._
 
-val defaultScalaVersion = "2.13.17"
+val defaultScalaVersion = "2.13.14"
 
 object npu extends SbtModule {
   def scalaVersion: T[String] = defaultScalaVersion
@@ -13,19 +13,20 @@ object npu extends SbtModule {
   def scalacOptions = Seq("-language:reflectiveCalls", "-Ymacro-annotations", "-Ytasty-reader")
 
   def mvnDeps = super.mvnDeps() ++ Seq(
-    mvn"org.chipsalliance::chisel:7.3.0"
+    mvn"org.chipsalliance::chisel:6.7.0"
   )
 
   def scalacPluginMvnDeps = super.scalacPluginMvnDeps() ++ Seq(
-    mvn"org.chipsalliance:::chisel-plugin:7.3.0"
+    mvn"org.chipsalliance:::chisel-plugin:6.7.0"
   )
 
   object test extends SbtTests with TestModule.ScalaTest {
     def mvnDeps = super.mvnDeps() ++ Seq(
-      mvn"org.scalatest::scalatest:3.2.19"
+      mvn"org.scalatest::scalatest:3.2.19",
+      mvn"edu.berkeley.cs::chiseltest:6.0.0"
     )
     def scalacPluginMvnDeps = super.scalacPluginMvnDeps() ++ Seq(
-      mvn"org.chipsalliance:::chisel-plugin:7.3.0"
+      mvn"org.chipsalliance:::chisel-plugin:6.7.0"
     )
   }
 }

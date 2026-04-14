@@ -1,0 +1,12 @@
+out/
+build/
+test_run_dir/
+*.v
+*.fir
+*.anno.json
+.bsp/
+.metals/
+.vscode/
+.idea/
+*.class
+*.log

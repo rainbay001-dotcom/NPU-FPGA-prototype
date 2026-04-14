@@ -2,13 +2,13 @@
 package npu
 
 import chisel3._
-import chisel3.simulator.EphemeralSimulator._
+import chiseltest._
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 import npu.common._
 import npu.vector._
 
-class VectorFunctionalTest extends AnyFlatSpec with Matchers {
+class VectorFunctionalTest extends AnyFlatSpec with ChiselScalatestTester with Matchers {
   val p = NPUClusterParams(cubeCores = 1, vectorCores = 2, l2SizeKB = 64)
 
   // IEEE 754 FP16 encoding helpers
@@ -34,7 +34,6 @@ class VectorFunctionalTest extends AnyFlatSpec with Matchers {
     java.lang.Float.intBitsToFloat(fbits)
   }
 
-  // Pack 16 FP16 values into one 256-bit word
   def packRow(values: Seq[Float]): BigInt = {
     require(values.length == 16)
     values.zipWithIndex.foldLeft(BigInt(0)) { case (acc, (v, i)) =>
@@ -42,16 +41,12 @@ class VectorFunctionalTest extends AnyFlatSpec with Matchers {
     }
   }
 
-  // Extract one FP16 from a 256-bit word
   def extractFP16(word: BigInt, index: Int): Float = {
     val bits = ((word >> (index * 16)) & BigInt(0xFFFF)).toInt
     fp16ToFloat(bits)
   }
 
   def initVectorCore(c: VectorCore): Unit = {
-    c.reset.poke(true.B)
-    c.clock.step(1)
-    c.reset.poke(false.B)
     c.io.cmd.valid.poke(false.B)
     c.io.ub_ext.read.en.poke(false.B)
     c.io.ub_ext.read.addr.poke(0.U)
@@ -100,23 +95,19 @@ class VectorFunctionalTest extends AnyFlatSpec with Matchers {
   }
 
   "VectorCore VADD" should "add two FP16 vectors element-wise" in {
-    simulate(new VectorCore(p)) { c =>
+    test(new VectorCore(p)) { c =>
       initVectorCore(c)
 
-      // src0 at addr 0: [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0]
       val src0 = packRow((1 to 16).map(_.toFloat))
-      // src1 at addr 1: [0.5, 0.5, 0.5, ..., 0.5]
       val src1 = packRow(Seq.fill(16)(0.5f))
 
       writeUB(c, 0, src0)
       writeUB(c, 1, src1)
       c.clock.step(1)
 
-      // VADD: dst=2, len=16 (one 256-bit word)
       issueCmd(c, 0x10, src0 = 0, src1 = 1, dst = 2, len = 16)
       val cycles = waitDone(c)
 
-      // Read result from addr 2
       val result = readUB(c, 2)
 
       var errors = 0
@@ -134,19 +125,16 @@ class VectorFunctionalTest extends AnyFlatSpec with Matchers {
   }
 
   "VectorCore VMUL" should "multiply two FP16 vectors element-wise" in {
-    simulate(new VectorCore(p)) { c =>
+    test(new VectorCore(p)) { c =>
       initVectorCore(c)
 
-      // src0: [2.0, 2.0, ..., 2.0]
       val src0 = packRow(Seq.fill(16)(2.0f))
-      // src1: [1.0, 2.0, 3.0, ..., 16.0]
       val src1 = packRow((1 to 16).map(_.toFloat))
 
       writeUB(c, 0, src0)
       writeUB(c, 1, src1)
       c.clock.step(1)
 
-      // VMUL: dst=2, len=16
       issueCmd(c, 0x12, src0 = 0, src1 = 1, dst = 2, len = 16)
       val cycles = waitDone(c)
 
@@ -167,10 +155,9 @@ class VectorFunctionalTest extends AnyFlatSpec with Matchers {
   }
 
   "VectorCore VRELU" should "clamp negative FP16 values to zero" in {
-    simulate(new VectorCore(p)) { c =>
+    test(new VectorCore(p)) { c =>
       initVectorCore(c)
 
-      // src0: [-8, -4, -2, -1, -0.5, -0.25, 0, 0.25, 0.5, 1, 2, 4, 8, 16, -16, -32]
       val values = Seq(-8.0f, -4.0f, -2.0f, -1.0f, -0.5f, -0.25f, 0.0f, 0.25f,
                        0.5f, 1.0f, 2.0f, 4.0f, 8.0f, 16.0f, -16.0f, -32.0f)
       val src0 = packRow(values)
@@ -178,7 +165,6 @@ class VectorFunctionalTest extends AnyFlatSpec with Matchers {
       writeUB(c, 0, src0)
       c.clock.step(1)
 
-      // VRELU: src1 unused, dst=1, len=16
       issueCmd(c, 0x17, src0 = 0, src1 = 0, dst = 1, len = 16)
       val cycles = waitDone(c)
 
@@ -199,10 +185,9 @@ class VectorFunctionalTest extends AnyFlatSpec with Matchers {
   }
 
   "VectorCore VADD" should "handle multi-word vectors (32 elements = 2 words)" in {
-    simulate(new VectorCore(p)) { c =>
+    test(new VectorCore(p)) { c =>
       initVectorCore(c)
 
-      // Two words of src0 at addr 0-1, src1 at addr 2-3, dst at 4-5
       val src0_w0 = packRow(Seq.fill(16)(1.0f))
       val src0_w1 = packRow(Seq.fill(16)(2.0f))
       val src1_w0 = packRow(Seq.fill(16)(3.0f))
@@ -214,7 +199,6 @@ class VectorFunctionalTest extends AnyFlatSpec with Matchers {
       writeUB(c, 3, src1_w1)
       c.clock.step(1)
 
-      // VADD 32 elements: src0=0, src1=2, dst=4, len=32
       issueCmd(c, 0x10, src0 = 0, src1 = 2, dst = 4, len = 32)
       val cycles = waitDone(c)
 
@@ -222,7 +206,6 @@ class VectorFunctionalTest extends AnyFlatSpec with Matchers {
       val result_w1 = readUB(c, 5)
 
       var errors = 0
-      // Word 0: 1.0 + 3.0 = 4.0
       for (i <- 0 until 16) {
         val actual = extractFP16(result_w0, i)
         if (math.abs(actual - 4.0f) > 0.1f) {
@@ -230,7 +213,6 @@ class VectorFunctionalTest extends AnyFlatSpec with Matchers {
           println(f"VADD multi w0[$i]: expected=4.0 actual=$actual%.1f")
         }
       }
-      // Word 1: 2.0 + 4.0 = 6.0
       for (i <- 0 until 16) {
         val actual = extractFP16(result_w1, i)
         if (math.abs(actual - 6.0f) > 0.1f) {
