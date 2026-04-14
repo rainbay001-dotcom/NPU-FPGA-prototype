@@ -4,6 +4,7 @@ package npu
 
 import chisel3._
 import chiseltest._
+import chiseltest.simulator.VerilatorBackendAnnotation
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 import npu.common._
@@ -157,7 +158,7 @@ class EndToEndTest extends AnyFlatSpec with ChiselScalatestTester with Matchers 
     val bRow = packRow(Seq.fill(16)(2.0f))
     for (i <- 0 until 16) { hbmStore(512L + i.toLong * 32, bRow) }
 
-    test(new NPUSoC(p)) { c =>
+    test(new NPUSoC(p)).withAnnotations(Seq(VerilatorBackendAnnotation)) { c =>
       pendingReadAddr = None
 
       c.io.mem.r.valid.poke(false.B)

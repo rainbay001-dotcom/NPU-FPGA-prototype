@@ -3,6 +3,7 @@ package npu
 
 import chisel3._
 import chiseltest._
+import chiseltest.simulator.VerilatorBackendAnnotation
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 import npu.common._
@@ -42,7 +43,7 @@ class CubeFunctionalTest extends AnyFlatSpec with ChiselScalatestTester with Mat
     // Test: A = all 1.0, B = all 2.0
     // Expected: C[m][n] = sum_k(A[m][k] * B[k][n]) = sum_k(1.0 * 2.0) = 16 * 2.0 = 32.0
 
-    test(new CubeCore(p)) { c =>
+    test(new CubeCore(p)).withAnnotations(Seq(VerilatorBackendAnnotation)) { c =>
       // Drive unused ports to safe defaults
       c.io.cmd.valid.poke(false.B)
       c.io.l0c_out.ready.poke(false.B)
@@ -142,7 +143,7 @@ class CubeFunctionalTest extends AnyFlatSpec with ChiselScalatestTester with Mat
   }
 
   it should "compute A=identity × B and get B back" in {
-    test(new CubeCore(p)) { c =>
+    test(new CubeCore(p)).withAnnotations(Seq(VerilatorBackendAnnotation)) { c =>
       c.io.cmd.valid.poke(false.B)
       c.io.l0c_out.ready.poke(false.B)
       c.io.l1.read.en.poke(false.B); c.io.l1.read.addr.poke(0.U)
