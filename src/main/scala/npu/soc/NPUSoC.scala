@@ -33,6 +33,12 @@ class NPUSoCIO(val p: NPUClusterParams) extends Bundle {
     val vectorBusy = Vec(p.vectorCores, Bool())
     val mteBusy    = Bool()
   })
+
+  // Debug: Fixpipe output (for end-to-end testing)
+  val fixOut = Decoupled(new Bundle {
+    val data = UInt(256.W)
+    val last = Bool()
+  })
 }
 
 class NPUSoC(val p: NPUClusterParams = NPUClusterParams()) extends Module {
@@ -48,6 +54,9 @@ class NPUSoC(val p: NPUClusterParams = NPUClusterParams()) extends Module {
 
   // External memory
   io.mem <> cluster.io.mem
+
+  // Debug fixpipe output
+  io.fixOut <> cluster.io.fixOut
 
   // Status
   io.status.busy       := cluster.io.busy

@@ -43,6 +43,12 @@ class NPUClusterIO(val p: NPUClusterParams) extends Bundle {
 
   // External memory port (to DDR/HBM controller)
   val mem = new MemPortIO(p.addrWidth, p.dataWidth)
+
+  // Debug: Fixpipe output from first CUBE core (for end-to-end testing)
+  val fixOut = Decoupled(new Bundle {
+    val data = UInt(256.W)
+    val last = Bool()
+  })
 }
 
 class NPUCluster(val p: NPUClusterParams) extends Module {
@@ -65,7 +71,19 @@ class NPUCluster(val p: NPUClusterParams) extends Module {
     cube.io.cmd.valid := false.B
     cube.io.cmd.bits  := DontCare
     fix.io.config     := DontCare
-    fix.io.out.ready  := true.B  // always accept for now
+  }
+
+  // Wire first fixpipe output to debug port; rest always accept
+  if (p.cubeCores > 0) {
+    io.fixOut.valid     := fixpipes(0).io.out.valid
+    io.fixOut.bits.data := fixpipes(0).io.out.bits.data
+    io.fixOut.bits.last := fixpipes(0).io.out.bits.last
+    fixpipes(0).io.out.ready := io.fixOut.ready
+    fixpipes.drop(1).foreach(_.io.out.ready := true.B)
+  } else {
+    io.fixOut.valid     := false.B
+    io.fixOut.bits.data := 0.U
+    io.fixOut.bits.last := false.B
   }
 
   // VECTOR cores
